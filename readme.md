@@ -1,4 +1,4 @@
-# Studio Classes API
+#Go_BookingClasses API
 
 This is a RESTful API built with Go that allows users to manage and book studio classes. The API provides endpoints for creating classes and bookings, with proper validation and error handling. 
 
