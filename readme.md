@@ -1,6 +1,7 @@
 # Go_BookingClasses API
 
-This is a RESTful API built with Go that allows users to manage and book classes. The API provides endpoints for creating classes and bookings, with proper validation and error handling. The Singleton pattern was used for simplicity and efficiency, as only two APIs needed to be created.
+This is a RESTful API built with Go that allows users to manage and book classes. The API provides endpoints for creating classes and bookings, with proper validation and error handling. 
+In v0.0.1 APIs ere implemented using singleton pattern. In v0.0.2, They were refactored to use dependency injection for a better decoupling.
 
 ## Features
 
