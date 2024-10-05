@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/MeherKandukuri/studioClasses_API/helpers"
 	"github.com/MeherKandukuri/studioClasses_API/models"
+	"github.com/MeherKandukuri/studioClasses_API/repository"
 )
 
 // struct to hold payload from postrequest for creating class
@@ -24,12 +25,30 @@ type BookingRequest struct {
 	Date string `json:"date"`
 }
 
-// initializing
-var bookings = make(map[string][]string)
-var classStorage = make(map[time.Time]models.Class)
+type ClassRepository struct {
+	ClassRepo repository.DBClassRepository
+}
+
+// Repo the repository used by the handlers
+var ClassHandlerRepo *ClassRepository
+
+func NewClassRepository(repo repository.DBClassRepository) *ClassRepository {
+	return &ClassRepository{ClassRepo: repo}
+}
+
+type BookingRepository struct {
+	bookingRepo repository.DBBookingRepository
+	classRepo   ClassRepository
+}
+
+var BookingHandlerRepo *BookingRepository
+
+func NewBookingRepository(bookingRepo repository.DBBookingRepository, classRepo ClassRepository) *BookingRepository {
+	return &BookingRepository{bookingRepo: bookingRepo, classRepo: classRepo}
+}
 
 // Handler for postrequest for creating classes
-func PostCreateClass(w http.ResponseWriter, r *http.Request) {
+func (h *ClassRepository) PostCreateClass(w http.ResponseWriter, r *http.Request) {
 	// validating whether we got the right access method
 	if !helpers.ValidateRequestMethod(w, r, http.MethodPost) {
 		return
@@ -79,22 +98,10 @@ func PostCreateClass(w http.ResponseWriter, r *http.Request) {
 		Capacity:  req.Capacity,
 	}
 
-	// If there is a class on that we cannot create one as we have only one class per day
-	currentDate := startDate
-	for !currentDate.After(endDate) {
-		if _, exists := classStorage[currentDate]; exists {
-			http.Error(w, fmt.Sprintf("Class already exists on %v", currentDate.Format("2006-01-02")), http.StatusConflict)
-			return
-		}
-		currentDate = currentDate.AddDate(0, 0, 1)
-	}
-
-	// Reset currentDate to startDate
-	currentDate = startDate
-	for !currentDate.After(endDate) {
-		// Add class to storage for each date
-		classStorage[currentDate] = class
-		currentDate = currentDate.AddDate(0, 0, 1)
+	currentDate, err := h.ClassRepo.CreateClass(r.Context(), class)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Class already exists on %v", currentDate.Format("2006-01-02")), http.StatusConflict)
+		return
 	}
 	// success message of creating a class
 	message := fmt.Sprintf("created %s classes between %s and %s with Capacity: %d",
@@ -105,7 +112,8 @@ func PostCreateClass(w http.ResponseWriter, r *http.Request) {
 }
 
 // Handler for Booking a class
-func PostCreateBooking(w http.ResponseWriter, r *http.Request) {
+func (h *BookingRepository) PostCreateBooking(w http.ResponseWriter, r *http.Request) {
+
 	// validating whether we got the right access method
 	if !helpers.ValidateRequestMethod(w, r, http.MethodPost) {
 		return
@@ -138,8 +146,9 @@ func PostCreateBooking(w http.ResponseWriter, r *http.Request) {
 	date = helpers.NormalizeDate(date)
 	datestr := date.Format("2006-01-02")
 
+	log.Println(datestr)
 	// make sure we have a class on that date
-	if _, found := classStorage[date]; !found {
+	if _, found := h.classRepo.ClassRepo.GetClassByDate(r.Context(), date); !found {
 		http.Error(w, "We don't have a class on this day", http.StatusBadRequest)
 		return
 	}
@@ -149,22 +158,20 @@ func PostCreateBooking(w http.ResponseWriter, r *http.Request) {
 		Name: reqBooking.Name,
 		Date: date,
 	}
-
+	log.Println(booking)
 	// This check is done assuming there is only one name for one person.
 	// later on We can achieve this functionality using unique user ID to make sure that all the bookings arent done by one person
-	namesInClass := bookings[datestr]
-	username := strings.ToLower(booking.Name)
-
-	for _, name := range namesInClass {
-		if strings.ToLower(name) == username {
-			http.Error(w, "You have already enrolled into class", http.StatusConflict)
-			return
-		}
+	exists, _ := h.bookingRepo.BookingExists(r.Context(), date, booking.Name)
+	if exists {
+		http.Error(w, "You have already enrolled into class", http.StatusConflict)
+		return
 	}
 
 	// appending to our bookings cache
-	bookings[datestr] = append(bookings[datestr], booking.Name)
-
+	err = h.bookingRepo.CreateBooking(r.Context(), booking)
+	if err != nil {
+		http.Error(w, "Failed to Create Booking", http.StatusInternalServerError)
+	}
 	//writing to our response with a confirmation message
 	message := fmt.Sprintf("%s has been enrolled for class on %s", booking.Name, datestr)
 	helpers.WriteJSONResponse(w, message, http.StatusCreated)

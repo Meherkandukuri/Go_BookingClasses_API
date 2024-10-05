@@ -3,8 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-
-	"github.com/MeherKandukuri/studioClasses_API/routes"
 )
 
 const portNumber = ":8080"
@@ -20,7 +18,7 @@ func main() {
 
 // setting up server with handler
 func run() *http.Server {
-	router := routes.Routes()
+	router := Routes()
 	return &http.Server{
 		Addr:    portNumber,
 		Handler: router,

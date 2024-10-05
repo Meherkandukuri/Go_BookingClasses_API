@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,10 +11,15 @@ import (
 	"time"
 
 	"github.com/MeherKandukuri/studioClasses_API/models"
+	"github.com/MeherKandukuri/studioClasses_API/repository/dbrepo"
 )
 
 // Testing Post Create class with a good request
 func TestPostCreateClass_SuccessfulReq(t *testing.T) {
+
+	mockClassRepo := dbrepo.NewinMemoryClassRepo()
+	// Create an instance of CreateClassHandler with a mock repository
+	classRepository := NewClassRepository(mockClassRepo)
 
 	// case 1: normal request sending right data and expecting status created
 	reqBody := `{
@@ -24,11 +30,11 @@ func TestPostCreateClass_SuccessfulReq(t *testing.T) {
 	}`
 
 	// creating a request with reqBody
-	req:= httptest.NewRequest(http.MethodPost, "/classes", strings.NewReader(reqBody))
+	req := httptest.NewRequest(http.MethodPost, "/classes", strings.NewReader(reqBody))
 
 	// recorder for a responsewriter and creating an http handler from postCreateClass
 	rec := httptest.NewRecorder()
-	handler := http.HandlerFunc(PostCreateClass)
+	handler := http.HandlerFunc(classRepository.PostCreateClass)
 	handler.ServeHTTP(rec, req)
 
 	// checking for expected status code
@@ -54,6 +60,9 @@ func TestPostCreateClass_SuccessfulReq(t *testing.T) {
 // Test to check whether the function rejects invalid data
 func TestPostCreateClasses_InvalidData(t *testing.T) {
 
+	mockClassRepo := dbrepo.NewinMemoryClassRepo()
+	// Create an instance of CreateClassHandler with a mock repository
+	classRepository := NewClassRepository(mockClassRepo)
 	// Testing for invalid user data.
 	requestBody := `{"class_name":"",
 	"start_date":"2024-12-01",
@@ -64,7 +73,7 @@ func TestPostCreateClasses_InvalidData(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
-	handler := http.HandlerFunc(PostCreateClass)
+	handler := http.HandlerFunc(classRepository.PostCreateClass)
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -79,11 +88,16 @@ func TestPostCreateClasses_InvalidData(t *testing.T) {
 
 // test to check whether function accepts invalidmethod request
 func TestPostCreateClass_InvalidMethod(t *testing.T) {
+
+	mockClassRepo := dbrepo.NewinMemoryClassRepo()
+	// Create an instance of CreateClassHandler with a mock repository
+	classRepository := NewClassRepository(mockClassRepo)
+
 	req := httptest.NewRequest(http.MethodGet, "/classes", nil)
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
-	handler := http.HandlerFunc(PostCreateClass)
+	handler := http.HandlerFunc(classRepository.PostCreateClass)
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status 405, got %d", rec.Code)
@@ -91,7 +105,10 @@ func TestPostCreateClass_InvalidMethod(t *testing.T) {
 }
 
 // test to check whether the function accepts startdate after end date
-func TestPostCreateBooking_WrongDates(t *testing.T) {
+func TestPostCreateClass_WrongDates(t *testing.T) {
+
+	mockClassRepo := dbrepo.NewinMemoryClassRepo()
+	ClassRepository := NewClassRepository(mockClassRepo)
 
 	// Testing for invalid user data.
 	requestBody := `{"class_name":"Meher",
@@ -103,7 +120,7 @@ func TestPostCreateBooking_WrongDates(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
-	handler := http.HandlerFunc(PostCreateClass)
+	handler := http.HandlerFunc(ClassRepository.PostCreateClass)
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -120,20 +137,23 @@ func TestPostCreateBooking_WrongDates(t *testing.T) {
 // started Tests for Booking Handler
 // **************************************************
 
-
 // Test to check wether the PostCreateBooking class as expected with a good request
 func TestPostCreateBooking_SuccessfulReq(t *testing.T) {
-	
+
 	// Set up class for the test date and add it to cache
-	classStorage = make(map[time.Time]models.Class)
+	mockClassRepo := dbrepo.NewinMemoryClassRepo()
+	mockBookingRepo := dbrepo.NewinMemoryBookingRepo()
+
+	BookingRepository := NewBookingRepository(mockBookingRepo, ClassRepository{ClassRepo: mockClassRepo})
+
 	dateStr := "2024-10-02"
 	date, _ := time.Parse("2006-01-02", dateStr)
-	classStorage[date] = models.Class{
+	BookingRepository.classRepo.ClassRepo.CreateClass(context.TODO(), models.Class{
 		ClassName: "Yoga",
 		StartDate: date,
 		EndDate:   date,
 		Capacity:  20,
-	}
+	})
 
 	// set up a request Body
 	requestBody := `{"name":"Meher",
@@ -146,14 +166,13 @@ func TestPostCreateBooking_SuccessfulReq(t *testing.T) {
 	// creating and initializing a responseRecorder
 	rec := httptest.NewRecorder()
 
-	handler := http.HandlerFunc(PostCreateBooking)
+	handler := http.HandlerFunc(BookingRepository.PostCreateBooking)
 	handler.ServeHTTP(rec, req)
 
 	// check for status code
 	if rec.Code != http.StatusCreated {
 		t.Errorf("expected status 201, got %d", rec.Code)
 	}
-
 
 	// check for message
 	expectedResponse := `{"message":"Meher has been enrolled for class on 2024-10-02"}`
@@ -167,11 +186,13 @@ func TestPostCreateBooking_SuccessfulReq(t *testing.T) {
 
 // check if the function accepts required method
 func TestPostCreateBooking_InvalidMethod(t *testing.T) {
+
+	BookingRepository := NewBookingRepository(nil, ClassRepository{})
 	req := httptest.NewRequest(http.MethodGet, "/booking", nil)
 	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
-	handler := http.HandlerFunc(PostCreateClass)
+	handler := http.HandlerFunc(BookingRepository.PostCreateBooking)
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected status 405, got %d", rec.Code)
@@ -181,13 +202,14 @@ func TestPostCreateBooking_InvalidMethod(t *testing.T) {
 // check if validation is working fine
 func TestPostCreateBooking_InvalidDate(t *testing.T) {
 
+	BookingRepository := NewBookingRepository(nil, ClassRepository{})
 	requestBody := `{"name":"Meher",
 					"date":""}`
 	req := httptest.NewRequest(http.MethodPost, "/bookings", strings.NewReader(requestBody))
 
 	rec := httptest.NewRecorder()
 
-	handler := http.HandlerFunc(PostCreateBooking)
+	handler := http.HandlerFunc(BookingRepository.PostCreateBooking)
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -197,17 +219,21 @@ func TestPostCreateBooking_InvalidDate(t *testing.T) {
 
 // check if we function accepts booking when there is no class
 func TestPostCreateBooking_NoClass(t *testing.T) {
-	// Set up class for the test date and making sure that the dates are different as we 
+	// Set up class for the test date and making sure that the dates are different as we
 	//dont want to have class on the booking day
-	classStorage = make(map[time.Time]models.Class)
+	mockClassRepo := dbrepo.NewinMemoryClassRepo()
+	mockBookingRepo := dbrepo.NewinMemoryBookingRepo()
+
+	bookingRepository := NewBookingRepository(mockBookingRepo, ClassRepository{ClassRepo: mockClassRepo})
+
 	dateStr := "2024-11-02"
 	date, _ := time.Parse("2006-01-02", dateStr)
-	classStorage[date] = models.Class{
+	bookingRepository.classRepo.ClassRepo.CreateClass(context.TODO(), models.Class{
 		ClassName: "Yoga",
 		StartDate: date,
 		EndDate:   date,
 		Capacity:  20,
-	}
+	})
 
 	requestBody := `{"name":"Meher",
 				"date":"2024-10-02"}`
@@ -216,7 +242,7 @@ func TestPostCreateBooking_NoClass(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	handler := http.HandlerFunc(PostCreateBooking)
+	handler := http.HandlerFunc(bookingRepository.PostCreateBooking)
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -234,21 +260,25 @@ func TestPostCreateBooking_NoClass(t *testing.T) {
 
 // Testing for already existing booking
 func TestPostCreateBooking_BookingExist(t *testing.T) {
-	
-	// Set up class for the test date
-	classStorage = make(map[time.Time]models.Class)
+
+	// Set up class for the test date and making sure that the dates are different as we
+	//dont want to have class on the booking day
+	mockClassRepo := dbrepo.NewinMemoryClassRepo()
+	mockBookingRepo := dbrepo.NewinMemoryBookingRepo()
+
+	bookingRepository := NewBookingRepository(mockBookingRepo, ClassRepository{ClassRepo: mockClassRepo})
+
 	dateStr := "2024-11-02"
 	date, _ := time.Parse("2006-01-02", dateStr)
-	classStorage[date] = models.Class{
+	bookingRepository.classRepo.ClassRepo.CreateClass(context.TODO(), models.Class{
 		ClassName: "Yoga",
 		StartDate: date,
 		EndDate:   date,
 		Capacity:  20,
-	}
+	})
 	// create a bookings entry to test
-	bookings = make(map[string][]string)
-	bookings["2024-11-02"] = []string{"Meher"}
-	
+	bookingRepository.bookingRepo.CreateBooking(context.TODO(), models.Booking{Date: date, Name: "Meher"})
+
 	//Creating a request body
 	requestBody := `{"name":"Meher",
 	"date":"2024-11-02"}`
@@ -257,7 +287,7 @@ func TestPostCreateBooking_BookingExist(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	handler := http.HandlerFunc(PostCreateBooking)
+	handler := http.HandlerFunc(bookingRepository.PostCreateBooking)
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusConflict {
